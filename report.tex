@@ -246,12 +246,44 @@ generating efficient inference code for a particular model.
 \subsubsection{Taxonomy of Probabilistic Programming systems}
 
 Probabilistic programming languages can be partitioned into two
-designations: \emph{first-order} PPLs and \emph{higher-order} PPLs. In
-the literature higher-order PPLs are sometimes referred to as
-universal probabilistic programming languages \citep{infcomp2017,
-  yang2014generating} or languages with recursion.
+designations: \emph{first-order} PPLs and \emph{higher-order} PPLs.
+First-order PPLs are ones where we can statically determine the number
+of latent variables of the model without performing any inference. The
+most popular systems are first-order as these restrictions make it
+possible to apply efficient inference algorithms to all models
+expressible within them. First-order PPLs include BUGS
+\citep{lunn2000winbugs}, Infer.NET \citep{InferNET14}, Stan
+\citep{carpenter2015stan}, PyMC \citep{salvatier2016probabilistic}, as
+well as Edward \citep{tran2016edward}.
+
+Higher-order PPLs are languages which can express all the
+probabilistic models that first-order PPLs are unable to. This greater
+flexibility in specification comes with a greater challenge in
+devising generic inference algorithms that can be made to work in this
+larger model family. In the literature higher-order PPLs are sometimes
+referred to as universal probabilistic programming languages
+\citep{infcomp2017, yang2014generating} or languages with recursion.
+
+It is deceptive to state that the defining characteristic of
+higher-order PPLs is that the languages have recursion as the
+recursion is only a problem if within recursion we make draws from a
+distribution. A fully deterministic recursive function is perfectly
+acceptable to use in a first-order PPL. This is indeed the case
+in the Stan language.
+
+When our model has an unfixed number of latent variables, this introduces
+the additional challenge that we need to be able generate unique names
+for them as we sample from our model. This process of generating names
+is called an \emph{addressing scheme}.
+
+The addressing scheme is important for implementing MCMC algorithms where
+we need to maintain which of the latent variables in our proposed state
+are shared with variables in our current state.
 
 \subsubsection{Core language grammar}
+
+To keep things concrete we introduce a small language \textsc{Hakaru}.
+We define this grammar we more formally in \cref{fig:coregrammar}.
 
 \begin{figure}
 \begin{grammar}
@@ -278,18 +310,45 @@ probabilistic programming system \citep{milchijcai2005}.
 \subsubsection{Trace MH interpreter}
 
 Up until recently, the most common inference algorithm which came with
-probabilistic programming systems is a single-site Metropolis Hastings called
-Trace MH \citep{scibior2018functional,wingate2011lightweight}.
+probabilistic programming systems is a single-site Metropolis Hastings
+called Trace MH
+\citep{scibior2018functional,wingate2011lightweight}. In this
+algorithm, we generate run the program instrumented to keep track of
+all random variables we encountered.  Then we re-execute the program in
+such a way that all but one of the random variables is kept fixed. This
+has the possibility of creating and removing random variables based on
+changes in control-flow.
 
 \subsubsection{SMC interpreter}
 
 Another popular to implement inference algorithm for probabilistic
-programming systems is the SMC interpreter \citep{wood2014new}.
+programming systems is the SMC interpreter \citep{wood2014new}. In
+this setting, we generate a large population of particles and as
+we execute the trace we re-weight them based on which of the random
+variables we encounter are observed.
 
 \subsubsection{Variational and Amortised Inference}
 
-Define the ELBO
-Define amortised inference
+Variational inference encompasses a family of inference techniques
+centred around posing inference problems as optimisation problems. The
+idea being that we can construct a parameterised family of approximate
+distributions $q(\vec x; \phi)$ and then finding the $\phi$ closest to
+probability distribution we actually care about. The notion of closest
+is often some f-divergence and mostly commonly the reverse KL divergence.
+
+\begin{equation}
+  \KL{q(\vec x; \phi)}{p(\vec x)} \coloneqq \E_{q(\vec x; \phi)} \left[ \log q(\vec x) - \log p(\vec x; \phi) \right]
+\end{equation}
+
+This KL divergence can be then be rewritten as:
+
+\begin{equation}
+  \KL{q(\vec x \given \vec y; \phi}{p(\vec x \given \vec y)} = \E_{q(\vec x \given \vec y; \phi)} \left[ \log p(\vec x, \vec y) - \log q(\vec x \given \vec y; \phi) \right]
+\end{equation}
+
+This is called the Evidence Lower Bound (ELBO).
+
+The idea with amortised inference \citep{gershman2014amortized} is that we can share parameters $\phi$ for different choices of $\vec x$.
 
 \subsubsection{Variational Autoencoders}
 
@@ -316,20 +375,33 @@ divergence that we may use for amortised inference.
 
 For many of the models we can express in a probabilistic programming
 system, we are unable to efficiently compute the density of a trace
-associated with our model.
+associated with our model. For example, in large physics and
+biological simulators it can be computationally intractable
+to compute a density.
 
 \subsection{Model criticism}
 
 As part of defining and performing inference on our probabilistic
-models, we often want to evaluate our models. If our models when fitted
-can be used to make predictions, we can evaluate their accuracy on
-held-out data, but this is inappropriate for many settings.
+models, we often want to evaluate our models. If our models when
+fitted can be used to make predictions, we can evaluate their accuracy
+on held-out labelled data, but this is inappropriate for many
+settings. More generally, if we have unlabelled data we may evaluate
+the test likelihood of it under our proposed model.
+
+\subsubsection{Two Sample Kernel Tests}
+
+Another approach, is to suppose we have our data $Y$ and data
+generated after fitting $Y^\prime$. We can ask if $Y$ and $Y^\prime$
+appear to come from the same distribution.
+
+We can pose this statistic as a maximum mean discrepancy \citep{gretton2012kernel} (MMD).
 
 \section{Proposal}
 
 The common thread that underlies this project is to push probabilistic
 programming to be applied in new settings that can take advantage of these
-new scalable inference algorithms.
+new scalable inference algorithms as well as make the systems for usable
+for non-experts.
 
 \subsection{Debugging Probabilistic Programming}
 
@@ -337,6 +409,20 @@ Often probabilistic modeling is an iterative process where a user
 tries out a model, evaluates it in some way, and then proposes some
 improvement. We can aid in the process by offering suggestions automatically
 for ways to improve a probabilistic model.
+
+The main idea is to define a neighbourhood $\mathcal{N}(p)$ which are
+the set of programs we can get to from our current program $p$ by a
+set of known pre-defined rewrites.
+
+An example of some possible rewrites could be:
+\begin{itemize}
+\item Replace $e_1 \sim \text{Normal}(e_2, e_3)$ with $e_1 \sim \text{Laplace}(e_2, e_3)$
+\item Replace $e_1 \sim e_2$ with $e_1 \sim \text{Mix}(e_2, \delta(0))$ where Mix is a mixture distribution  
+\end{itemize}
+
+Each of these proposed programs can then be fitted and compared with
+the original program using a two-sample kernel test. We can then present
+the choices to the user interactively through some UI element in the PPS.
 
 This work is most similar to work by \citet{grosse2012a}. The two main
 differences between this work and theirs is they restrict their search
@@ -359,7 +445,25 @@ hypothesis testing.
 
 \subsection{Data Cleaning}
 
-We mitigate the risks of this project by 
+While most research focuses on the model fitting and evaluation steps
+in data analysis, most of the time of practitioners is spent on
+acquiring and cleaning the datasets. Data cleaning can describe
+writing transformations to get data into a proper schema, correcting
+annotation errors, removing duplicates, as well correcting other
+internal inconsistencies. This project focuses on data which is
+already in a tabular format, is likely to mostly fit into a schema
+unknown in advance, but may still have errors and misspellings that
+need to be corrected.
+
+The approach we take is defining a generative model for tabular data
+where we define a prior on data schema, and a generative model for
+generating cells of data conditioned on this schema as well as
+previously generated cells.
+
+We mitigate the risks of this project by initially restricting
+ourselves to synthetically-generated tabular datasets as well previous
+real-world noisy tabular data where a prior analysis has given us some
+ground truth to work with.
 
 
 \subsection{Automated Expectation Maximisation}
