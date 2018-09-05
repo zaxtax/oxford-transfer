@@ -1,0 +1,40 @@
+* Scalable Inference for Structured Domains using Probabilistic Programming
+
+* Literature Review
+
+** Probabilistic Inference Algorithms
+*** Sampling
+*** Exact inference
+*** Variational Inference
+*** VAEs
+*** Compiled Inference
+
+*** Implicit models
+
+https://arxiv.org/abs/1808.02078
+https://arxiv.org/abs/1702.08896
+https://arxiv.org/abs/1702.08235
+https://arxiv.org/abs/1805.12244
+
+** Interpreters
+** Program Transformations
+** Probabilistic Programming
+
+*** Motivations
+*** Different ways to build them
+*** Differences between the systems
+
+* Hakaru system
+
+** Grammar
+** Type system
+
+* Composing Inference
+
+* Evaluating models (Model criticism)
+
+* Future research and connections to probprog
+** Data cleaning
+** Multihop QA
+** Program Synthesis
+** Debugging probabilistic programs
